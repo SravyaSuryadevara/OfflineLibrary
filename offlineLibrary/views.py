@@ -63,13 +63,40 @@ def upload_file(request):
     
 #     return Response({"results": serializer.data})
 
+# def search_pdfs(request):
+#     query = request.GET.get('q', '').strip()
+    
+#     if query:
+#         results = UploadedFile.objects.filter(
+#             Q(file__icontains=query) | Q(extracted_text__icontains=query)
+#         )
+#     else:
+#         results = UploadedFile.objects.all()
+
+#     # Construct full URL for PDFs
+#     pdf_list = [
+#         {
+#             "id": pdf.id,
+#             "filename": pdf.file.name,
+#             "file_url": request.build_absolute_uri(pdf.file.url),  # ✅ Fix
+#         }
+#         for pdf in results
+#     ]
+
+#     return Response({"results": pdf_list})
+
 def search_pdfs(request):
     query = request.GET.get('q', '').strip()
     
     if query:
-        results = UploadedFile.objects.filter(
-            Q(file__icontains=query) | Q(extracted_text__icontains=query)
-        )
+        keywords = query.split()  # Split query into individual words
+        q_objects = Q()
+
+        # Use OR (|=) to match PDFs containing at least one keyword
+        for keyword in keywords:
+            q_objects |= (Q(file__icontains=keyword) | Q(extracted_text__icontains=keyword))
+
+        results = UploadedFile.objects.filter(q_objects).distinct()  # Ensure unique results
     else:
         results = UploadedFile.objects.all()
 
