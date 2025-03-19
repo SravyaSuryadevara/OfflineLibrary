@@ -1,0 +1,1 @@
+{{ object.extracted_text }}
