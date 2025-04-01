@@ -15,6 +15,14 @@ from django.db.models import Q
 from library.models import UploadedFile  # Use UploadedFile model
 from library.serializers import UploadedFileSerializer  # Ensure this exists
 from django.conf import settings
+from django.contrib.postgres.search import SearchVector, SearchQuery, SearchRank
+from library.models import MediaFile
+from library.serializers import MediaFileSerializer
+from rest_framework.views import APIView
+from rest_framework.parsers import MultiPartParser, FormParser
+from rest_framework import status, viewsets
+from library.models import MediaFile
+from library.serializers import MediaFileSerializer
 
 @api_view(['GET'])
 def get_data(request):
@@ -44,68 +52,34 @@ def upload_file(request):
 @csrf_exempt
 
 @api_view(['GET'])
-# def search_pdfs(request):
-#     query = request.GET.get('q', '').strip()
-
-#     if query:
-#         results = UploadedFile.objects.filter(
-#             Q(file__icontains=query) | Q(extracted_text__icontains=query)
-#         )
-#     else:
-#         results = UploadedFile.objects.all()  # Return all PDFs if no search term
-
-#     # Debugging - Print matching results in the terminal
-#     print(f"Search Query: {query}")
-#     print("Search Results:", results)
-
-#     # Serialize results
-#     serializer = UploadedFileSerializer(results, many=True)
-    
-#     return Response({"results": serializer.data})
-
-# def search_pdfs(request):
-#     query = request.GET.get('q', '').strip()
-    
-#     if query:
-#         results = UploadedFile.objects.filter(
-#             Q(file__icontains=query) | Q(extracted_text__icontains=query)
-#         )
-#     else:
-#         results = UploadedFile.objects.all()
-
-#     # Construct full URL for PDFs
-#     pdf_list = [
-#         {
-#             "id": pdf.id,
-#             "filename": pdf.file.name,
-#             "file_url": request.build_absolute_uri(pdf.file.url),  # ✅ Fix
-#         }
-#         for pdf in results
-#     ]
-
-#     return Response({"results": pdf_list})
 
 def search_pdfs(request):
-    query = request.GET.get('q', '').strip()
-    
-    if query:
-        keywords = query.split()  # Split query into individual words
-        q_objects = Q()
+    query = request.GET.get('q', '')
 
-        # Use OR (|=) to match PDFs containing at least one keyword
-        for keyword in keywords:
-            q_objects |= (Q(file__icontains=keyword) | Q(extracted_text__icontains=keyword))
+    if query:  # Ensure query isn't empty
+        keywords = query.split()  # Split query into words
+        search_query = SearchQuery(query)  # Full-text search query
 
-        results = UploadedFile.objects.filter(q_objects).distinct()  # Ensure unique results
+        # Annotate with full-text search vector
+        results = UploadedFile.objects.annotate(
+            search=SearchVector('file', 'extracted_text')
+        ).filter(search=search_query)  # Full-text search
+
+        if not results.exists():  # Fallback to basic keyword matching
+            q_objects = Q()
+            for keyword in keywords:
+                q_objects |= (Q(file__icontains=keyword) | Q(extracted_text__icontains=keyword))
+            results = UploadedFile.objects.filter(q_objects).distinct()
+
     else:
+        # If query is empty, return the full list
         results = UploadedFile.objects.all()
 
-    # Construct full URL for PDFs
     pdf_list = [
         {
             "id": pdf.id,
             "filename": pdf.file.name,
-            "file_url": request.build_absolute_uri(pdf.file.url),  # ✅ Fix
+            "file_url": request.build_absolute_uri(pdf.file.url),
         }
         for pdf in results
     ]
@@ -129,9 +103,66 @@ def pdf_list_api(request):
     ]
     return JsonResponse({"pdfs": pdf_list}, status=200)
 
-# def pdf_library_view(request):
-#     """Render the React frontend inside Django template."""
-#     return render(request, "pdf_library.html")
 def pdf_library_view(request):
     """Render the React frontend inside Django template."""
     return render(request, "offlineLibrary/pdf_library.html")
+
+# class MediaFileViewSet(viewsets.ModelViewSet):
+#     queryset = MediaFile.objects.all()
+#     serializer_class = MediaFileSerializer
+#     parser_classes = (MultiPartParser, FormParser)
+
+#     def create(self, request, *args, **kwargs):
+#         file = request.FILES.get("file")
+#         category = request.data.get("category")
+
+#         if file and category in ["image", "video"]:
+#             media_file = MediaFile(file=file, category=category)
+#             media_file.save()
+#             return Response({"message": "File uploaded successfully"}, status=status.HTTP_201_CREATED)
+
+#         return Response({"error": "Invalid file or category"}, status=status.HTTP_400_BAD_REQUEST)
+class MediaFileViewSet(viewsets.ModelViewSet):
+    queryset = MediaFile.objects.all()
+    serializer_class = MediaFileSerializer
+    parser_classes = (MultiPartParser, FormParser)
+
+    def create(self, request, *args, **kwargs):
+        """Upload media files and auto-assign category."""
+        file = request.FILES.get("file")
+
+        if file:
+            media_file = MediaFile(file=file)  # Auto-assign category
+            media_file.save()
+            return Response(
+                {"message": "File uploaded successfully", "category": media_file.category},
+                status=201
+            )
+
+        return Response({"error": "Invalid file"}, status=400)
+
+    def list(self, request, *args, **kwargs):
+        """List uploaded media files grouped into images and videos."""
+        images = MediaFile.objects.filter(category="image")
+        videos = MediaFile.objects.filter(category="video")
+
+        return Response({
+            "images": MediaFileSerializer(images, many=True).data,
+            "videos": MediaFileSerializer(videos, many=True).data
+        })
+
+@api_view(['GET'])
+def search_media(request):
+    query = request.GET.get("q", "").strip().lower()
+
+    if not query:
+        return Response({"results": []}, status=status.HTTP_200_OK)
+
+    # Search by filename
+    images = MediaFile.objects.filter(category="image", file__icontains=query)
+    videos = MediaFile.objects.filter(category="video", file__icontains=query)
+
+    image_data = MediaFileSerializer(images, many=True).data
+    video_data = MediaFileSerializer(videos, many=True).data
+
+    return Response({"results": image_data + video_data}, status=status.HTTP_200_OK)
