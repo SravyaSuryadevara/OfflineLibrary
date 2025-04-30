@@ -2,18 +2,23 @@ from django.db import models
 import fitz  # PyMuPDF for extracting text from PDFs
 import os
 from django.conf import settings
+from django.db.models.signals import post_save
+from django.dispatch import receiver
+from offlineLibrary.utils import generate_pdf_thumbnail
 
 class UploadedFile(models.Model):
     file = models.FileField(upload_to="uploads/")
     extracted_text = models.TextField(blank=True, null=True)  # Store extracted text
     uploaded_at = models.DateTimeField(auto_now_add=True)  # Timestamp
+    thumbnail = models.ImageField(upload_to="thumbnails/", blank=True, null=True)
 
     def save(self, *args, **kwargs):
         """Extract text from the uploaded PDF and save it in the database."""
         super().save(*args, **kwargs)
         if self.file:
             self.extract_text_from_pdf()
-            super().save(update_fields=["extracted_text"])
+            self.generate_thumbnail()
+            super().save(update_fields=["extracted_text", "thumbnail"])
 
     def extract_text_from_pdf(self):
         """Extracts text from the PDF efficiently and stores it in `extracted_text`."""
@@ -36,7 +41,11 @@ class UploadedFile(models.Model):
 
         self.extracted_text = "\n".join(text)  # Store text efficiently
 
-import os
+    def generate_thumbnail(self):
+        filename = os.path.splitext(os.path.basename(self.file.name))[0]
+        thumbnail_path = os.path.join(settings.MEDIA_ROOT, 'thumbnails', f"{filename}.png")
+        generate_pdf_thumbnail(self.file.path, thumbnail_path)
+        self.thumbnail.name = f'thumbnails/{filename}.png'
 
 def media_upload_path(instance, filename):
     """

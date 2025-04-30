@@ -7,7 +7,7 @@ class UploadedFileSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = UploadedFile
-        fields = ["id", "filename", "file_url", "extracted_text"]
+        fields = ["id", "thumbnail", "filename", "file_url", "extracted_text"]
 
     def get_filename(self, obj):
         return obj.file.name  # ✅ Extracts the filename correctly

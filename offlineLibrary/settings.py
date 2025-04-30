@@ -25,7 +25,7 @@ SECRET_KEY = 'django-insecure-13l)h49e5x4qchs!*j*(4sle(5ivyurg##*q6$4oejfs)h+q-i
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = ['localhost', '127.0.0.1', '192.168.1.12', '192.168.1.9']
+ALLOWED_HOSTS = ['localhost', '127.0.0.1', '192.168.1.8']
 
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",  # React frontend URL
@@ -45,7 +45,10 @@ INSTALLED_APPS = [
     'library.apps.LibraryConfig',
     'haystack',
     'rest_framework',
+    'tailwind',
 ]
+import os
+TAILWIND_APP_NAME = "library.apps.LibraryConfig"
 
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
@@ -59,6 +62,8 @@ MIDDLEWARE = [
 ]
 
 CORS_ALLOW_ALL_ORIGINS = True  # Allows all origins (for testing)
+
+X_FRAME_OPTIONS = 'ALLOWALL'  # or 'ALLOWALL' (less secure, only for LAN)
 
 ROOT_URLCONF = 'offlineLibrary.urls'
 import os
